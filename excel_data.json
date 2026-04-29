@@ -1,0 +1,350 @@
+{
+  "BD_Config": [
+    [
+      "ID_Mat",
+      "Nombre Papel",
+      "Costo Pliego",
+      "ID_Mq",
+      "Nombre Maquina",
+      "Tecnología",
+      "$ Arreglo",
+      "$ Variable",
+      "Columna 9",
+      "Columna 10",
+      "ID_Ter",
+      "Nombre Proceso",
+      "Tipo",
+      "$ Arreglo 2",
+      "$ Variable 2"
+    ],
+    [
+      "P-01",
+      "Propalcote 150g",
+      400,
+      "MQ-01",
+      "Heidelberg Speedmaster",
+      "Offset",
+      180000,
+      45000,
+      null,
+      null,
+      "T-01",
+      "Troquelado (ZDM)",
+      "Millar",
+      50000,
+      25000
+    ],
+    [
+      "P-02",
+      "Propalcote 300g",
+      800,
+      "MQ-02",
+      "Heidelberg GTO",
+      "Offset",
+      80000,
+      30000,
+      null,
+      null,
+      "T-02",
+      "Plastificado Mate",
+      "Pliego",
+      0,
+      450
+    ],
+    [
+      "P-03",
+      "Bond 75g",
+      120,
+      "MQ-03",
+      "Ricoh Pro C7100x",
+      "Digital",
+      0,
+      600,
+      null,
+      null,
+      "T-03",
+      "Plegado Auto",
+      "Millar",
+      30000,
+      10000
+    ],
+    [
+      "P-04",
+      "Adhesivo",
+      2500,
+      "MQ-04",
+      "Plotter Stormjet",
+      "Gran Formato",
+      0,
+      25000,
+      null,
+      null,
+      "T-04",
+      "Refile / Corte",
+      "Global",
+      15000,
+      0
+    ],
+    [
+      "P-05",
+      "Maule C18",
+      1800,
+      "MQ-05",
+      "UV DTF",
+      "Gran Formato",
+      0,
+      55000,
+      null,
+      null,
+      "T-05",
+      "Pegue a Mano",
+      "Unidad",
+      0,
+      80
+    ],
+    [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      "T-06",
+      "Diseño / Arte",
+      "Global",
+      50000,
+      0
+    ],
+    [],
+    [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      "F"
+    ],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "IN_Cotizacion": [
+    [
+      "No. Cotización",
+      "Columna 1"
+    ],
+    [
+      "Fecha",
+      46090
+    ],
+    [
+      "Cliente"
+    ],
+    [
+      "Producto"
+    ],
+    [
+      "Cantidad Deseada",
+      5000
+    ],
+    [],
+    [],
+    [
+      "Papel Seleccionado",
+      "Costo Papel Unit",
+      "Cabida (x Pliego)",
+      "Pliegos Requeridos",
+      "% Merma",
+      "Total a Comprar",
+      "SUBTOTAL PAPEL"
+    ],
+    [
+      "Propalcote 300g",
+      800,
+      16,
+      313,
+      0.05,
+      329,
+      263200
+    ],
+    [],
+    [
+      "MEDIDAS PROD",
+      "MEDIDAS PAPEL",
+      "CABIDA",
+      "PAPEL TOTAL",
+      "Manual",
+      "FINAL"
+    ],
+    [
+      "Alto (cm)",
+      "Ancho (cm)",
+      "Alto (cm)",
+      "Ancho (cm)"
+    ],
+    [
+      25,
+      15,
+      70,
+      100,
+      null,
+      16
+    ],
+    [],
+    [
+      "PAPEL:",
+      null,
+      "Costo Unit:",
+      "$ 400",
+      "Total Pliegos:",
+      344
+    ],
+    [],
+    [],
+    [
+      "Máquina",
+      "Tecnología",
+      "Tarifa Arreglo",
+      "Tarifa Variable",
+      "Tintas / Cambios",
+      "SUBTOTAL IMPRESIÓN"
+    ],
+    [
+      "Plotter Stormjet",
+      "Gran Formato",
+      0,
+      25000,
+      5,
+      8225000,
+      null,
+      " "
+    ],
+    [],
+    [],
+    [
+      "Proceso",
+      "Detalle",
+      "Cantidad Base",
+      "Costo Calc."
+    ],
+    [
+      "Plastificado Mate",
+      null,
+      329,
+      148050
+    ],
+    [
+      "Troquelado (ZDM)",
+      null,
+      5000,
+      175000
+    ],
+    [
+      "Pegue a Mano",
+      null,
+      5000,
+      400000
+    ],
+    [
+      null,
+      null,
+      "",
+      0
+    ],
+    [
+      null,
+      null,
+      "",
+      0
+    ],
+    [
+      null,
+      null,
+      "",
+      0
+    ],
+    [
+      null,
+      null,
+      "",
+      0
+    ],
+    [
+      null,
+      null,
+      "",
+      0
+    ],
+    [
+      null,
+      null,
+      "",
+      0
+    ],
+    [],
+    [
+      "Totales",
+      "Valor",
+      "Costo Con Margen de Ganacia"
+    ],
+    [
+      "Total Materiales",
+      263200
+    ],
+    [
+      "Total Impresión",
+      8225000
+    ],
+    [
+      "Total Terminados",
+      723050
+    ],
+    [
+      "Costo total sin Margen de Ganancia",
+      9211250
+    ],
+    [
+      "Margen (%)",
+      0.25,
+      12281666.67
+    ],
+    [
+      "Precio Venta",
+      12281666.67
+    ],
+    [
+      "Precio Unitario",
+      2456.333333
+    ],
+    [
+      "IVA",
+      2333516.667
+    ],
+    [
+      "Precio Total + IVA",
+      14615183.33
+    ],
+    [],
+    [],
+    [
+      "Trabajos Digitales / Rápidos: Usa márgenes altos (40% - 60%) porque son montos pequeños."
+    ],
+    [
+      "Trabajos Offset / Volumen: Usa márgenes medios (25% - 35%) para ser competitivo."
+    ],
+    [
+      "Revendedores: Usa márgenes bajos (15% - 20%) porque te traen volumen constante."
+    ],
+    [],
+    [],
+    [],
+    []
+  ]
+}

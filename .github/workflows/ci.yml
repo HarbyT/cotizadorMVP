@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop", "staging"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cotizador-app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cotizador-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint + Typecheck + Test + Build
+        run: npm run ci
