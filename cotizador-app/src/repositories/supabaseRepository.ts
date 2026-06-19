@@ -56,6 +56,8 @@ interface DbPaperRow {
   pricing_mode: PaperType['pricingMode'] | null;
   cost_per_linear_meter: number | string | null;
   cost_per_square_meter: number | string | null;
+  grain_direction: PaperType['grainDirection'] | null;
+  purchase_increment: number | string | null;
   provider: string | null;
 }
 
@@ -184,6 +186,8 @@ function toPaperEntity(row: DbPaperRow): PaperType {
     pricingMode: row.pricing_mode ?? undefined,
     costPerLinearMeter: row.cost_per_linear_meter !== null ? toNumber(row.cost_per_linear_meter) : undefined,
     costPerSquareMeter: row.cost_per_square_meter !== null ? toNumber(row.cost_per_square_meter) : undefined,
+    grainDirection: row.grain_direction ?? 'unknown',
+    purchaseIncrement: row.purchase_increment !== null ? toNumber(row.purchase_increment) : undefined,
     provider: row.provider ?? undefined,
   };
 }
@@ -312,6 +316,8 @@ function mapCatalogEntityToDbRow<K extends CatalogKey>(catalog: K, item: Catalog
       pricing_mode: value.pricingMode ?? null,
       cost_per_linear_meter: value.costPerLinearMeter ?? null,
       cost_per_square_meter: value.costPerSquareMeter ?? null,
+      grain_direction: value.grainDirection ?? 'unknown',
+      purchase_increment: value.purchaseIncrement ?? null,
       provider: value.provider ?? null,
     };
   }

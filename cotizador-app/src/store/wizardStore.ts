@@ -4,6 +4,7 @@ import type {
   QuoteItem,
   QuoteItemGeometrySnapshot,
   QuoteItemPricingSnapshot,
+  GeometryOptimizationMode,
   RollPricingMode,
   SubstrateKind,
 } from '../types/database';
@@ -38,6 +39,7 @@ interface WizardFields {
   geometryGapCm: number;
   geometryGripperCm: number;
   geometryAllowRotation: boolean;
+  geometryOptimizationMode: GeometryOptimizationMode;
   geometryMaterialCost: number | null;
   geometrySnapshot: QuoteItemGeometrySnapshot | null;
 
@@ -115,6 +117,7 @@ const initialWizardFields: WizardFields = {
   geometryGapCm: 0.5,
   geometryGripperCm: 1.5,
   geometryAllowRotation: true,
+  geometryOptimizationMode: 'best_fit',
   geometryMaterialCost: null,
   geometrySnapshot: null,
 

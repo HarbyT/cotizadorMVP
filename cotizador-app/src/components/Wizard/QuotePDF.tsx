@@ -290,6 +290,10 @@ export const QuotePDFTemplate = React.forwardRef<HTMLDivElement, QuotePDFTemplat
                       <span>Aprovechamiento: {geometry.utilizationPct.toFixed(1)}%</span>
                       <span>Cabidas: {geometry.piecesPerSheetOrRun.toLocaleString('es-CO')}</span>
                       <span>Costo material: ${formatCop(geometry.materialCost)}</span>
+                      <span>Geometria: {geometry.geometryVerified === false ? 'Manual / no verificada' : 'Verificada'}</span>
+                      {geometry.materialConsumption.estimatedWeightKg !== undefined && (
+                        <span>Peso estimado: {geometry.materialConsumption.estimatedWeightKg.toFixed(2)} kg</span>
+                      )}
                     </div>
                     <div style={{ fontSize: '11px', color: '#475569', marginBottom: '4px' }}>
                       Parametros: sangrado {geometry.bleedCm}cm | calle {geometry.gapCm}cm | pinza {geometry.gripperCm}cm | merma {(geometry.wastePct * 100).toFixed(1)}%
@@ -303,6 +307,11 @@ export const QuotePDFTemplate = React.forwardRef<HTMLDivElement, QuotePDFTemplat
                         ))}
                       </div>
                     )}
+                    {geometry.warnings?.map((warning) => (
+                      <div key={warning} style={{ marginTop: '4px', fontSize: '10px', color: '#92400e' }}>
+                        Advertencia: {warning}
+                      </div>
+                    ))}
                   </div>
                 );
               })}

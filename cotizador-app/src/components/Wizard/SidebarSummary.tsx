@@ -17,6 +17,14 @@ import { createQuoteId } from '../../utils/id';
 import { supabaseRepository } from '../../repositories/supabaseRepository';
 import type { QuoteItemPricingSnapshot, QuoteType } from '../../types/database';
 
+const GEOMETRY_MODE_LABELS: Record<string, string> = {
+  normal: 'Original',
+  rotated: 'Girado',
+  mixed_vertical: 'Mixto vertical',
+  mixed_horizontal: 'Mixto horizontal',
+  not_feasible: 'No factible',
+};
+
 export const SidebarSummary: React.FC = () => {
   const wizard = useWizardStore();
   const db = useDBStore();
@@ -326,7 +334,7 @@ export const SidebarSummary: React.FC = () => {
   };
 
   return (
-    <aside className={`glass-panel ${calculation.isDanger ? 'alert-danger-bg' : ''}`} style={{ width: '380px', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
+    <aside className={`glass-panel ${calculation.isDanger ? 'alert-danger-bg' : ''}`} style={{ width: '380px', maxWidth: '100%', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ color: calculation.isDanger ? 'var(--color-danger)' : 'inherit' }}>Resumen en Tiempo Real</h3>
       <hr style={{ margin: '1rem 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
 
@@ -355,7 +363,7 @@ export const SidebarSummary: React.FC = () => {
               </span>
               {liveGeometry && (
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  {`Modo ${liveGeometry.layoutMode} | Aprovechamiento ${liveGeometry.utilizationPct.toFixed(1)}%`}
+                  {`${GEOMETRY_MODE_LABELS[liveGeometry.layoutMode] || liveGeometry.layoutMode} | Aprovechamiento ${liveGeometry.utilizationPct.toFixed(1)}%`}
                 </span>
               )}
               {calculation.paperCostOverridden && (

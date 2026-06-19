@@ -1,9 +1,34 @@
 import React, { useMemo } from 'react';
-import type { QuoteItemGeometrySnapshot } from '../../types/database';
+import type {
+  GeometryOptimizationMode,
+  QuoteItemGeometrySnapshot,
+  RollPricingMode,
+  SubstrateKind,
+} from '../../types/database';
 import { useWizardStore } from '../../store/wizardStore';
 import { useDBStore } from '../../store/dbStore';
-import { calculateGeometry } from '../../domain/geometryEngine';
+import {
+  applyManualGeometryOverride,
+  calculateGeometry,
+  type GeometryInput,
+} from '../../domain/geometryEngine';
 import { calcularCabidas, calcularPliegosTotales } from '../../utils/paperCalculator';
+import { CutLayoutViewer } from './CutLayoutViewer';
+
+const LAYOUT_LABELS: Record<string, string> = {
+  normal: 'Orientacion original',
+  rotated: 'Pieza girada 90 grados',
+  mixed_vertical: 'Montaje mixto vertical',
+  mixed_horizontal: 'Montaje mixto horizontal',
+  not_feasible: 'No factible',
+};
+
+const OPTIMIZATION_LABELS: Record<GeometryOptimizationMode, string> = {
+  best_fit: 'Maximo rendimiento',
+  preserve_grain: 'Respetar fibra',
+  fixed_normal: 'Orientacion original',
+  fixed_rotated: 'Girar 90 grados',
+};
 
 export const StepMaterials: React.FC = () => {
   const wizard = useWizardStore();
@@ -13,13 +38,14 @@ export const StepMaterials: React.FC = () => {
   const paper = papers.find((entry) => entry.id === wizard.selectedPaperId) ?? null;
   const machine = machines.find((entry) => entry.id === wizard.selectedMachineId) ?? null;
   const machineGripperMargin = machine?.gripperMargin ?? 1.5;
+  const substrateKind: SubstrateKind = wizard.materialSubstrateKind || paper?.substrateKind || 'sheet';
+  const pricingMode: RollPricingMode = wizard.rollPricingMode || paper?.pricingMode || 'linear_meter';
+  const rollWidthCm = Math.max(1, wizard.rollWidthCm || paper?.rollWidthCm || paper?.formatWidth || 100);
+  const gripperCm = Math.max(0, Number.isFinite(wizard.geometryGripperCm)
+    ? wizard.geometryGripperCm
+    : machineGripperMargin);
 
-  const effectiveSubstrateKind = wizard.materialSubstrateKind || paper?.substrateKind || 'sheet';
-  const effectiveRollPricingMode = wizard.rollPricingMode || paper?.pricingMode || 'linear_meter';
-  const effectiveRollWidth = Math.max(1, wizard.rollWidthCm || paper?.rollWidthCm || paper?.formatWidth || 100);
-  const effectiveGripper = Math.max(0, wizard.geometryGripperCm || machineGripperMargin);
-
-  const legacyCalcResult = useMemo(() => {
+  const legacyResult = useMemo(() => {
     if (!paper || wizard.width <= 0 || wizard.height <= 0) {
       return null;
     }
@@ -35,65 +61,83 @@ export const StepMaterials: React.FC = () => {
     });
   }, [paper, wizard.width, wizard.height, machineGripperMargin]);
 
-  const advancedCalcResult = useMemo(() => {
-    if (!wizard.useAdvancedGeometry || !paper || wizard.width <= 0 || wizard.height <= 0) {
+  const geometryInput = useMemo<GeometryInput | null>(() => {
+    if (!wizard.useAdvancedGeometry || !paper) {
       return null;
     }
 
-    return calculateGeometry({
+    return {
       strategy: 'guillotine_2stage_mixed',
       pieceWidthCm: wizard.width,
       pieceHeightCm: wizard.height,
       quantity: wizard.quantity,
       bleedCm: wizard.geometryBleedCm,
       gapCm: wizard.geometryGapCm,
-      gripperCm: effectiveGripper,
+      gripperCm,
       wastePct: wizard.mermaPercent,
       allowRotation: wizard.geometryAllowRotation,
-      substrateKind: effectiveSubstrateKind,
+      optimizationMode: wizard.geometryOptimizationMode,
+      grainDirection: paper.grainDirection || 'unknown',
+      weightGrams: paper.weightGrams,
+      purchaseIncrement: paper.purchaseIncrement,
+      substrateKind,
       sheetWidthCm: paper.formatWidth,
       sheetHeightCm: paper.formatHeight,
-      rollWidthCm: effectiveRollWidth,
-      pricingMode: effectiveRollPricingMode,
+      rollWidthCm,
+      pricingMode,
       unitCostSheet: paper.costPerSheet,
       unitCostLinearMeter: paper.costPerLinearMeter,
       unitCostSquareMeter: paper.costPerSquareMeter,
-    });
+    };
   }, [
     wizard.useAdvancedGeometry,
-    paper,
     wizard.width,
     wizard.height,
     wizard.quantity,
     wizard.geometryBleedCm,
     wizard.geometryGapCm,
-    effectiveGripper,
     wizard.mermaPercent,
     wizard.geometryAllowRotation,
-    effectiveSubstrateKind,
-    effectiveRollWidth,
-    effectiveRollPricingMode,
+    wizard.geometryOptimizationMode,
+    paper,
+    gripperCm,
+    substrateKind,
+    rollWidthCm,
+    pricingMode,
   ]);
+
+  const automaticGeometryResult = useMemo(
+    () => (geometryInput ? calculateGeometry(geometryInput) : null),
+    [geometryInput],
+  );
+
+  const geometryResult = useMemo(() => {
+    if (!automaticGeometryResult || !geometryInput || overrideCabidas === null) {
+      return automaticGeometryResult;
+    }
+
+    return applyManualGeometryOverride(automaticGeometryResult, geometryInput, overrideCabidas);
+  }, [automaticGeometryResult, geometryInput, overrideCabidas]);
 
   React.useEffect(() => {
     if (!wizard.useAdvancedGeometry) {
-      if (!legacyCalcResult) {
+      if (!legacyResult) {
+        updateField('cabidas', 0);
+        updateField('pliegosTotales', 0);
         updateField('geometryMaterialCost', null);
         updateField('geometrySnapshot', null);
         return;
       }
 
-      const finalCabidas = overrideCabidas !== null ? overrideCabidas : legacyCalcResult.totalCabidas;
-      updateField('cabidas', finalCabidas);
-
-      const pliegos = calcularPliegosTotales(quantity, finalCabidas, mermaPercent);
-      updateField('pliegosTotales', pliegos);
+      const finalYield = overrideCabidas ?? legacyResult.totalCabidas;
+      updateField('cabidas', finalYield);
+      updateField('pliegosTotales', calcularPliegosTotales(quantity, finalYield, mermaPercent));
       updateField('geometryMaterialCost', null);
       updateField('geometrySnapshot', null);
       return;
     }
 
-    if (!advancedCalcResult || !paper) {
+    if (!geometryResult || !geometryInput || geometryResult.layoutMode === 'not_feasible') {
       updateField('cabidas', 0);
       updateField('pliegosTotales', 0);
       updateField('geometryMaterialCost', null);
@@ -101,292 +145,71 @@ export const StepMaterials: React.FC = () => {
       return;
     }
 
-    const engineCabidas = Math.max(0, advancedCalcResult.piecesPerSheetOrRun);
-    const finalCabidas = overrideCabidas !== null ? Math.max(1, overrideCabidas) : engineCabidas;
-    updateField('cabidas', finalCabidas);
+    const workflowConsumption = substrateKind === 'sheet'
+      ? geometryResult.materialConsumption.requiredSheets || 0
+      : geometryResult.materialConsumption.requiredLinearMeters || 0;
 
-    let materialCost = advancedCalcResult.materialCost;
-    const materialConsumption = { ...advancedCalcResult.materialConsumption };
-    let pliegosTotalesForWorkflow = 0;
-
-    if (effectiveSubstrateKind === 'sheet') {
-      const requiredSheets = calcularPliegosTotales(quantity, finalCabidas, mermaPercent);
-      pliegosTotalesForWorkflow = requiredSheets;
-      materialCost = requiredSheets * paper.costPerSheet;
-      materialConsumption.requiredSheets = requiredSheets;
-    } else {
-      const requiredLinearMetersRaw = finalCabidas > 0 ? (quantity / finalCabidas) * (1 + mermaPercent) : 0;
-      const requiredLinearMeters = Math.ceil(requiredLinearMetersRaw * 100) / 100;
-      const consumedAreaM2 = (effectiveRollWidth * requiredLinearMeters * 100) / 10000;
-      pliegosTotalesForWorkflow = requiredLinearMeters;
-
-      if (effectiveRollPricingMode === 'square_meter') {
-        materialCost = consumedAreaM2 * (paper.costPerSquareMeter || 0);
-      } else {
-        materialCost = requiredLinearMeters * (paper.costPerLinearMeter || 0);
-      }
-
-      materialConsumption.requiredLinearMeters = requiredLinearMeters;
-      materialConsumption.consumedAreaM2 = consumedAreaM2;
-    }
-
-    updateField('pliegosTotales', pliegosTotalesForWorkflow);
-    updateField('geometryMaterialCost', materialCost);
+    updateField('cabidas', geometryResult.piecesPerSheetOrRun);
+    updateField('pliegosTotales', workflowConsumption);
+    updateField('geometryMaterialCost', geometryResult.materialCost);
 
     const snapshot: QuoteItemGeometrySnapshot = {
-      strategy: 'guillotine_2stage_mixed',
-      substrateKind: effectiveSubstrateKind,
-      pricingMode: effectiveRollPricingMode,
-      layoutMode: advancedCalcResult.layoutMode,
+      strategy: geometryResult.strategy,
+      substrateKind,
+      pricingMode,
+      layoutMode: geometryResult.layoutMode,
       pieceWidthCm: wizard.width,
       pieceHeightCm: wizard.height,
       bleedCm: wizard.geometryBleedCm,
       gapCm: wizard.geometryGapCm,
-      gripperCm: effectiveGripper,
-      wastePct: mermaPercent,
+      gripperCm,
+      wastePct: wizard.mermaPercent,
       allowRotation: wizard.geometryAllowRotation,
-      piecesPerSheetOrRun: finalCabidas,
-      utilizationPct: advancedCalcResult.utilizationPct,
-      usedAreaCm2: advancedCalcResult.usedAreaCm2,
-      wasteAreaCm2: advancedCalcResult.wasteAreaCm2,
-      materialConsumption,
-      materialCost,
-      cutPlan: advancedCalcResult.cutPlan,
+      optimizationMode: wizard.geometryOptimizationMode,
+      grainDirection: paper?.grainDirection || 'unknown',
+      manualOverride: geometryResult.manualOverride,
+      geometryVerified: geometryResult.geometryVerified,
+      piecesPerSheetOrRun: geometryResult.piecesPerSheetOrRun,
+      utilizationPct: geometryResult.utilizationPct,
+      usedAreaCm2: geometryResult.usedAreaCm2,
+      wasteAreaCm2: geometryResult.wasteAreaCm2,
+      containerWidthCm: geometryResult.containerWidthCm,
+      containerHeightCm: geometryResult.containerHeightCm,
+      wasteBreakdown: geometryResult.wasteBreakdown,
+      placements: geometryResult.placements,
+      alternatives: geometryResult.alternatives,
+      warnings: geometryResult.warnings,
+      materialConsumption: geometryResult.materialConsumption,
+      materialCost: geometryResult.materialCost,
+      cutPlan: geometryResult.cutPlan,
     };
 
     updateField('geometrySnapshot', snapshot);
   }, [
     wizard.useAdvancedGeometry,
-    legacyCalcResult,
-    advancedCalcResult,
-    paper,
-    overrideCabidas,
-    quantity,
-    mermaPercent,
-    effectiveSubstrateKind,
-    effectiveRollPricingMode,
-    effectiveRollWidth,
-    effectiveGripper,
     wizard.width,
     wizard.height,
     wizard.geometryBleedCm,
     wizard.geometryGapCm,
     wizard.geometryAllowRotation,
+    wizard.geometryOptimizationMode,
+    wizard.mermaPercent,
+    legacyResult,
+    geometryResult,
+    geometryInput,
+    overrideCabidas,
+    quantity,
+    mermaPercent,
+    substrateKind,
+    pricingMode,
+    gripperCm,
+    paper?.grainDirection,
     updateField,
   ]);
 
-  const renderLegacyPaperGraph = () => {
-    if (!legacyCalcResult || !paper) {
-      return null;
-    }
-
-    const maxDrawWidth = 420;
-    const maxDrawHeight = 300;
-
-    const horizontal = paper.formatWidth >= paper.formatHeight;
-    const scale = horizontal ? maxDrawWidth / paper.formatWidth : maxDrawHeight / paper.formatHeight;
-
-    const drawnWidth = paper.formatWidth * scale;
-    const drawnHeight = paper.formatHeight * scale;
-    const pinzaDrawn = machineGripperMargin * scale;
-
-    const cabidaWidthCm = legacyCalcResult.modo === 'Normal' ? wizard.width : wizard.height;
-    const cabidaHeightCm = legacyCalcResult.modo === 'Normal' ? wizard.height : wizard.width;
-    const cabDrawnWidth = cabidaWidthCm * scale;
-    const cabDrawnHeight = cabidaHeightCm * scale;
-
-    return (
-      <div
-        style={{
-          marginTop: '1.5rem',
-          marginBottom: '1rem',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          background: '#f8fafc',
-          padding: '1rem',
-          borderRadius: 'var(--radius-md)',
-        }}
-      >
-        <h4 style={{ marginBottom: '0.8rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-          Mapa Geometrico Base ({paper.formatWidth}x{paper.formatHeight}cm)
-        </h4>
-
-        <div
-          style={{
-            width: `${drawnWidth}px`,
-            height: `${drawnHeight}px`,
-            background: '#fff',
-            border: '2px solid #cbd5e1',
-            position: 'relative',
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: `${pinzaDrawn}px`,
-              background: 'repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 10px, #e2e8f0 10px, #e2e8f0 20px)',
-              borderBottom: '1px dashed #94a3b8',
-              fontSize: '0.6rem',
-              color: '#64748b',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            Pinza ({machineGripperMargin.toFixed(2)} cm)
-          </div>
-
-          <div
-            style={{
-              position: 'absolute',
-              top: `${pinzaDrawn}px`,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              padding: '2px',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignContent: 'flex-start',
-              gap: '1px',
-            }}
-          >
-            {Array.from({ length: legacyCalcResult.totalCabidas }).map((_, index) => (
-              <div
-                key={`legacy-piece-${index}`}
-                style={{
-                  width: `${Math.max(1, cabDrawnWidth - 1)}px`,
-                  height: `${Math.max(1, cabDrawnHeight - 1)}px`,
-                  background: 'var(--color-primary)',
-                  opacity: 0.25,
-                  border: '1px solid var(--color-primary)',
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderAdvancedGeometryMap = () => {
-    if (!advancedCalcResult || !paper) {
-      return null;
-    }
-
-    if (effectiveSubstrateKind === 'roll') {
-      const rollWidth = effectiveRollWidth;
-      const maxWidth = 420;
-      const scale = maxWidth / rollWidth;
-      const barWidth = rollWidth * scale;
-      const barHeight = 160;
-      const stripeCount = Math.max(
-        1,
-        advancedCalcResult.cutPlan.find((step) => step.stage === 1)?.count || 1,
-      );
-
-      return (
-        <div style={{ marginTop: '1rem', background: '#f8fafc', borderRadius: '8px', padding: '1rem' }}>
-          <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            Mapa Geometrico Rollo ({rollWidth.toFixed(2)} cm ancho)
-          </h4>
-          <div
-            style={{
-              width: `${barWidth}px`,
-              height: `${barHeight}px`,
-              margin: '0 auto',
-              border: '2px solid #94a3b8',
-              background: '#ffffff',
-              display: 'grid',
-              gridTemplateColumns: `repeat(${stripeCount}, 1fr)`,
-              gap: '1px',
-            }}
-          >
-            {Array.from({ length: stripeCount }).map((_, index) => (
-              <div key={`roll-stripe-${index}`} style={{ background: 'rgba(37, 99, 235, 0.2)', border: '1px solid rgba(37, 99, 235, 0.4)' }} />
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    const maxDrawWidth = 420;
-    const maxDrawHeight = 300;
-    const horizontal = paper.formatWidth >= paper.formatHeight;
-    const scale = horizontal ? maxDrawWidth / paper.formatWidth : maxDrawHeight / paper.formatHeight;
-    const drawnWidth = paper.formatWidth * scale;
-    const drawnHeight = paper.formatHeight * scale;
-    const pinzaDrawn = effectiveGripper * scale;
-
-    return (
-      <div style={{ marginTop: '1rem', background: '#f8fafc', borderRadius: '8px', padding: '1rem' }}>
-        <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-          Mapa Geometrico Avanzado ({advancedCalcResult.layoutMode})
-        </h4>
-
-        <div
-          style={{
-            width: `${drawnWidth}px`,
-            height: `${drawnHeight}px`,
-            margin: '0 auto',
-            border: '2px solid #cbd5e1',
-            position: 'relative',
-            background: '#fff',
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: `${pinzaDrawn}px`,
-              background: 'repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 10px, #e2e8f0 10px, #e2e8f0 20px)',
-              borderBottom: '1px dashed #94a3b8',
-              fontSize: '0.6rem',
-              color: '#64748b',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            Pinza ({effectiveGripper.toFixed(2)} cm)
-          </div>
-
-          {advancedCalcResult.sections.map((section, index) => (
-            <div
-              key={`section-${index}`}
-              style={{
-                position: 'absolute',
-                left: `${section.originXCm * scale}px`,
-                top: `${pinzaDrawn + section.originYCm * scale}px`,
-                width: `${Math.max(1, section.widthCm * scale)}px`,
-                height: `${Math.max(1, section.heightCm * scale)}px`,
-                border: `2px solid ${section.orientation === 'normal' ? '#2563eb' : '#f97316'}`,
-                background: section.orientation === 'normal' ? 'rgba(37, 99, 235, 0.18)' : 'rgba(249, 115, 22, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '0.68rem',
-                color: '#0f172a',
-                textAlign: 'center',
-                padding: '2px',
-                boxSizing: 'border-box',
-              }}
-            >
-              {section.orientation} ({section.pieceCount})
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   const handlePaperChange = (paperId: string) => {
     updateField('selectedPaperId', paperId);
+    updateField('overrideCabidas', null);
 
     const selected = papers.find((entry) => entry.id === paperId);
     if (!selected) {
@@ -398,64 +221,139 @@ export const StepMaterials: React.FC = () => {
     updateField('rollWidthCm', selected.rollWidthCm || selected.formatWidth || 100);
   };
 
-  const activeCabidas = wizard.overrideCabidas ?? (wizard.useAdvancedGeometry ? advancedCalcResult?.piecesPerSheetOrRun : legacyCalcResult?.totalCabidas) ?? 0;
-  const activeAprovechamiento = wizard.useAdvancedGeometry ? advancedCalcResult?.utilizationPct : legacyCalcResult?.porcentajeAprovechamiento;
-  const activeMaterialCost = wizard.useAdvancedGeometry ? wizard.geometryMaterialCost : paper ? paper.costPerSheet * wizard.pliegosTotales : 0;
-  const requiredLinearMeters = wizard.geometrySnapshot?.materialConsumption.requiredLinearMeters;
-  const requiredSheets = wizard.geometrySnapshot?.materialConsumption.requiredSheets;
+  const currentYield = wizard.useAdvancedGeometry
+    ? geometryResult?.piecesPerSheetOrRun || 0
+    : overrideCabidas ?? legacyResult?.totalCabidas ?? 0;
+  const materialCost = wizard.useAdvancedGeometry
+    ? geometryResult?.materialCost || 0
+    : (paper?.costPerSheet || 0) * wizard.pliegosTotales;
+
+  const resultExplanation = useMemo(() => {
+    if (!geometryResult || geometryResult.layoutMode === 'not_feasible') {
+      return '';
+    }
+
+    const recommended = geometryResult.alternatives[0];
+    const second = geometryResult.alternatives[1];
+
+    if (!recommended || !second) {
+      return `Se eligio ${LAYOUT_LABELS[geometryResult.layoutMode] || geometryResult.layoutMode} por ser la alternativa valida de menor consumo.`;
+    }
+
+    const yieldDifference = recommended.piecesPerSheetOrRun - second.piecesPerSheetOrRun;
+    const saving = second.materialCost - recommended.materialCost;
+
+    if (geometryResult.substrateKind === 'roll' && saving > 0) {
+      return `Recomendamos ${recommended.label}: reduce el costo estimado de material en $${Math.round(saving).toLocaleString('es-CO')}.`;
+    }
+
+    if (yieldDifference > 0) {
+      return `Recomendamos ${recommended.label}: obtiene ${yieldDifference.toLocaleString('es-CO', { maximumFractionDigits: 2 })} piezas adicionales por unidad de material.`;
+    }
+
+    if (saving > 0) {
+      return `Recomendamos ${recommended.label}: reduce el costo estimado de material en $${Math.round(saving).toLocaleString('es-CO')}.`;
+    }
+
+    return `Recomendamos ${recommended.label}: logra el mismo rendimiento con una secuencia de corte mas simple.`;
+  }, [geometryResult]);
 
   return (
     <div className="animate-fade-in">
-      <h2>Paso 2: Materiales y Geometria de Corte</h2>
+      <h2>Paso 2: Materiales y geometria de corte</h2>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
-        Selecciona el sustrato y define si usaras el motor base o el modo avanzado para montajes irregulares (pliego/rollo).
+        Calcula cuanto material necesitas, compara orientaciones y valida visualmente el montaje antes de cotizar.
       </p>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', padding: '0.85rem 1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <strong>Modo avanzado de cortes</strong>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '1rem',
+          marginBottom: '1rem',
+          padding: '0.9rem 1rem',
+          background: 'var(--bg-surface-hover)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border-color)',
+        }}
+      >
+        <div>
+          <strong>Optimizador geometrico</strong>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+            Mantiene disponible el calculo clasico como respaldo.
+          </div>
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={wizard.useAdvancedGeometry}
-            onChange={(event) => updateField('useAdvancedGeometry', event.target.checked)}
+            onChange={(event) => {
+              updateField('useAdvancedGeometry', event.target.checked);
+              updateField('overrideCabidas', null);
+            }}
           />
-          Activar
+          {wizard.useAdvancedGeometry ? 'Avanzado' : 'Clasico'}
         </label>
       </div>
 
       <div className="input-group">
         <label className="input-label">Sustrato</label>
-        <select className="input-field" value={wizard.selectedPaperId || ''} onChange={(event) => handlePaperChange(event.target.value)}>
-          <option value="" disabled>
-            Seleccione un sustrato
-          </option>
+        <select
+          className="input-field"
+          value={wizard.selectedPaperId || ''}
+          onChange={(event) => handlePaperChange(event.target.value)}
+        >
+          <option value="" disabled>Selecciona un sustrato</option>
           {papers.map((entry) => (
             <option key={entry.id} value={entry.id}>
-              {entry.name} - {entry.formatWidth}x{entry.formatHeight}cm
-              {entry.substrateKind === 'roll' ? ` (Rollo ${entry.rollWidthCm || entry.formatWidth}cm)` : ` ($${entry.costPerSheet}/pliego)`}
+              {entry.name} - {entry.substrateKind === 'roll'
+                ? `Rollo ${entry.rollWidthCm || entry.formatWidth} cm`
+                : `${entry.formatWidth} x ${entry.formatHeight} cm`}
             </option>
           ))}
         </select>
       </div>
 
       {wizard.useAdvancedGeometry ? (
-        <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+        <div className="geometry-input-grid">
           <div className="input-group">
-            <label className="input-label">Tipo de sustrato</label>
+            <label className="input-label">Objetivo del montaje</label>
             <select
               className="input-field"
-              value={effectiveSubstrateKind}
-              onChange={(event) => updateField('materialSubstrateKind', event.target.value as 'sheet' | 'roll')}
+              value={wizard.geometryOptimizationMode}
+              onChange={(event) => {
+                const mode = event.target.value as GeometryOptimizationMode;
+                updateField('geometryOptimizationMode', mode);
+                updateField('geometryAllowRotation', mode === 'best_fit' || mode === 'fixed_rotated');
+                updateField('overrideCabidas', null);
+              }}
             >
-              <option value="sheet">Pliego</option>
-              <option value="roll">Rollo (Vinilo/Plastico)</option>
+              {Object.entries(OPTIMIZATION_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </select>
           </div>
 
-          {effectiveSubstrateKind === 'roll' && (
+          <div className="input-group">
+            <label className="input-label">Tipo de material</label>
+            <select
+              className="input-field"
+              value={substrateKind}
+              onChange={(event) => {
+                updateField('materialSubstrateKind', event.target.value as SubstrateKind);
+                updateField('overrideCabidas', null);
+              }}
+            >
+              <option value="sheet">Pliego</option>
+              <option value="roll">Rollo (vinilo/plastico)</option>
+            </select>
+          </div>
+
+          {substrateKind === 'roll' && (
             <>
               <div className="input-group">
-                <label className="input-label">Ancho de rollo (cm)</label>
+                <label className="input-label">Ancho del rollo (cm)</label>
                 <input
                   type="number"
                   className="input-field"
@@ -466,13 +364,11 @@ export const StepMaterials: React.FC = () => {
                 />
               </div>
               <div className="input-group">
-                <label className="input-label">Tarifa de rollo</label>
+                <label className="input-label">Unidad de cobro</label>
                 <select
                   className="input-field"
-                  value={effectiveRollPricingMode}
-                  onChange={(event) =>
-                    updateField('rollPricingMode', event.target.value as 'linear_meter' | 'square_meter')
-                  }
+                  value={pricingMode}
+                  onChange={(event) => updateField('rollPricingMode', event.target.value as RollPricingMode)}
                 >
                   <option value="linear_meter">Metro lineal (ML)</option>
                   <option value="square_meter">Metro cuadrado (m2)</option>
@@ -482,156 +378,262 @@ export const StepMaterials: React.FC = () => {
           )}
 
           <div className="input-group">
-            <label className="input-label">Sangrado (cm)</label>
+            <label className="input-label">Sangrado por lado (cm)</label>
             <input
               type="number"
               step="0.01"
+              min="0"
               className="input-field"
               value={wizard.geometryBleedCm}
-              onChange={(event) => updateField('geometryBleedCm', Number(event.target.value) || 0)}
+              onChange={(event) => updateField('geometryBleedCm', Math.max(0, Number(event.target.value) || 0))}
             />
           </div>
 
           <div className="input-group">
-            <label className="input-label">Calle (cm)</label>
+            <label className="input-label">Separacion entre piezas (cm)</label>
             <input
               type="number"
               step="0.01"
+              min="0"
               className="input-field"
               value={wizard.geometryGapCm}
-              onChange={(event) => updateField('geometryGapCm', Number(event.target.value) || 0)}
+              onChange={(event) => updateField('geometryGapCm', Math.max(0, Number(event.target.value) || 0))}
             />
           </div>
 
-          <div className="input-group">
-            <label className="input-label">Pinza (cm)</label>
-            <input
-              type="number"
-              step="0.01"
-              className="input-field"
-              value={wizard.geometryGripperCm}
-              onChange={(event) => updateField('geometryGripperCm', Number(event.target.value) || 0)}
-            />
-          </div>
-
-          <div className="input-group">
-            <label className="input-label">% Merma (ej 0.05 = 5%)</label>
-            <input
-              type="number"
-              step="0.01"
-              className="input-field"
-              value={wizard.mermaPercent}
-              onChange={(event) => updateField('mermaPercent', Number(event.target.value) || 0)}
-            />
-          </div>
-
-          <div className="input-group" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '1.5rem' }}>
+          {substrateKind === 'sheet' && (
+            <div className="input-group">
+              <label className="input-label">Pinza no imprimible (cm)</label>
               <input
-                type="checkbox"
-                checked={wizard.geometryAllowRotation}
-                onChange={(event) => updateField('geometryAllowRotation', event.target.checked)}
+                type="number"
+                step="0.01"
+                min="0"
+                className="input-field"
+                value={wizard.geometryGripperCm}
+                onChange={(event) => updateField('geometryGripperCm', Math.max(0, Number(event.target.value) || 0))}
               />
-              Permitir rotacion
-            </label>
+            </div>
+          )}
+
+          <div className="input-group">
+            <label className="input-label">Merma de produccion (%)</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              className="input-field"
+              value={wizard.mermaPercent * 100}
+              onChange={(event) => updateField('mermaPercent', Math.max(0, Number(event.target.value) || 0) / 100)}
+            />
           </div>
         </div>
       ) : (
-        <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-          <div className="input-group">
-            <label className="input-label">% de Merma (Ej. 0.05 para 5%)</label>
-            <input
-              type="number"
-              step="0.01"
-              className="input-field"
-              value={wizard.mermaPercent}
-              onChange={(event) => updateField('mermaPercent', Number(event.target.value) || 0)}
-            />
-          </div>
+        <div className="input-group" style={{ maxWidth: '320px' }}>
+          <label className="input-label">Merma de produccion (%)</label>
+          <input
+            type="number"
+            step="0.5"
+            min="0"
+            className="input-field"
+            value={wizard.mermaPercent * 100}
+            onChange={(event) => updateField('mermaPercent', Math.max(0, Number(event.target.value) || 0) / 100)}
+          />
         </div>
       )}
 
-      {(legacyCalcResult || advancedCalcResult) && (
-        <div style={{ marginTop: '1.5rem', background: 'var(--bg-surface-hover)', padding: '1.5rem', borderRadius: 'var(--radius-md)' }}>
-          <h3 style={{ marginBottom: '1rem', color: 'var(--color-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>{wizard.useAdvancedGeometry ? 'Resultado Motor Geometrico Avanzado' : 'Resultado Motor de Cabidas'}</span>
-            <label style={{ fontSize: '0.85rem', fontWeight: 400, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+      {wizard.useAdvancedGeometry && geometryResult?.layoutMode === 'not_feasible' && (
+        <div className="alert-danger" style={{ marginTop: '1rem' }}>
+          {geometryResult.warnings[0] || 'La pieza no cabe en este material.'}
+        </div>
+      )}
+
+      {(wizard.useAdvancedGeometry ? geometryResult?.layoutMode !== 'not_feasible' : Boolean(legacyResult)) && (
+        <section
+          style={{
+            marginTop: '1.5rem',
+            padding: '1.25rem',
+            background: 'var(--bg-surface-hover)',
+            borderRadius: 'var(--radius-lg)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginBottom: '1rem',
+            }}
+          >
+            <div>
+              <h3 style={{ fontSize: '1.2rem' }}>
+                {wizard.useAdvancedGeometry ? 'Montaje recomendado' : 'Resultado clasico'}
+              </h3>
+              {wizard.useAdvancedGeometry && geometryResult && (
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.25rem' }}>
+                  {resultExplanation}
+                </p>
+              )}
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={wizard.overrideCabidas !== null}
-                onChange={(event) => {
-                  if (event.target.checked) {
-                    updateField('overrideCabidas', Math.max(1, Math.floor(activeCabidas || 1)));
-                    return;
-                  }
-
-                  updateField('overrideCabidas', null);
-                }}
+                checked={overrideCabidas !== null}
+                onChange={(event) =>
+                  updateField('overrideCabidas', event.target.checked ? Math.max(1, Math.floor(currentYield || 1)) : null)
+                }
               />
-              Ajuste Geometrico Manual
+              Forzar rendimiento manual
             </label>
-          </h3>
+          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-            <div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Cabidas utiles</div>
-              {wizard.overrideCabidas === null ? (
-                <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{Math.floor(activeCabidas)} pzs</div>
+          <div className="geometry-result-grid">
+            <div className="geometry-metric">
+              <div className="geometry-metric-label">
+                {substrateKind === 'roll' ? 'Piezas estimadas / ML' : 'Piezas / pliego'}
+              </div>
+              {overrideCabidas === null ? (
+                <div className="geometry-metric-value">
+                  {currentYield.toLocaleString('es-CO', { maximumFractionDigits: 2 })}
+                </div>
               ) : (
                 <input
                   type="number"
+                  min="1"
+                  step={substrateKind === 'roll' ? '0.01' : '1'}
                   className="input-field"
-                  style={{ fontSize: '1.2rem', padding: '0.2rem 0.5rem', width: '90px', fontWeight: 'bold' }}
-                  value={wizard.overrideCabidas}
-                  onChange={(event) => updateField('overrideCabidas', Number(event.target.value) || 1)}
+                  value={overrideCabidas}
+                  onChange={(event) => updateField('overrideCabidas', Math.max(1, Number(event.target.value) || 1))}
                 />
               )}
             </div>
-            <div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Aprovechamiento</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 600, color: wizard.overrideCabidas === null ? 'var(--color-success)' : 'var(--text-secondary)' }}>
-                {wizard.overrideCabidas === null ? `${(activeAprovechamiento || 0).toFixed(1)}%` : 'Manual'}
+
+            <div className="geometry-metric">
+              <div className="geometry-metric-label">Aprovechamiento neto</div>
+              <div className="geometry-metric-value">
+                {overrideCabidas === null
+                  ? `${(wizard.useAdvancedGeometry ? geometryResult?.utilizationPct || 0 : legacyResult?.porcentajeAprovechamiento || 0).toFixed(1)}%`
+                  : 'No verificado'}
               </div>
             </div>
-            <div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                {effectiveSubstrateKind === 'roll' ? 'Consumo base' : 'Pliegos a comprar'}
+
+            <div className="geometry-metric">
+              <div className="geometry-metric-label">
+                {substrateKind === 'roll' ? 'Material a comprar' : 'Pliegos a comprar'}
               </div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>
-                {effectiveSubstrateKind === 'roll'
-                  ? `${(requiredLinearMeters || wizard.pliegosTotales || 0).toLocaleString('es-CO', { maximumFractionDigits: 2 })} ML`
-                  : `${requiredSheets || wizard.pliegosTotales} pliegos`}
+              <div className="geometry-metric-value">
+                {substrateKind === 'roll'
+                  ? `${(geometryResult?.materialConsumption.requiredLinearMeters || 0).toLocaleString('es-CO', { maximumFractionDigits: 2 })} ML`
+                  : `${wizard.useAdvancedGeometry
+                    ? geometryResult?.materialConsumption.requiredSheets || 0
+                    : wizard.pliegosTotales}`}
               </div>
             </div>
-            <div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Costo material</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 600, color: 'var(--color-primary)' }}>
-                ${Math.round(activeMaterialCost || 0).toLocaleString('es-CO')}
+
+            <div className="geometry-metric">
+              <div className="geometry-metric-label">Costo de material</div>
+              <div className="geometry-metric-value" style={{ color: 'var(--color-primary)' }}>
+                ${Math.round(materialCost).toLocaleString('es-CO')}
               </div>
             </div>
           </div>
 
-          {wizard.useAdvancedGeometry && advancedCalcResult?.cutPlan.length ? (
-            <div style={{ marginTop: '1rem', borderTop: '1px dashed #cbd5e1', paddingTop: '0.8rem' }}>
-              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem' }}>Plan de cortes (guillotina 2 etapas)</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#334155' }}>
-                {advancedCalcResult.cutPlan.map((step, index) => (
-                  <div key={`cut-step-${index}`}>
-                    {`Etapa ${step.stage} | ${step.axis} | ${step.description} | tamano ${step.sizeCm.toLocaleString('es-CO', { maximumFractionDigits: 3 })} cm | repeticiones ${step.count}`}
+          {wizard.useAdvancedGeometry && geometryResult && (
+            <>
+              {geometryResult.warnings.map((warning) => (
+                <div
+                  key={warning}
+                  style={{
+                    marginTop: '0.75rem',
+                    padding: '0.7rem 0.8rem',
+                    borderRadius: 'var(--radius-md)',
+                    background: '#fffbeb',
+                    border: '1px solid #fcd34d',
+                    color: '#92400e',
+                    fontSize: '0.82rem',
+                  }}
+                >
+                  {warning}
+                </div>
+              ))}
+
+              <div className="geometry-workspace" style={{ marginTop: '1rem' }}>
+                <CutLayoutViewer
+                  result={geometryResult}
+                  bleedCm={wizard.geometryBleedCm}
+                  gripperCm={substrateKind === 'sheet' ? gripperCm : 0}
+                  grainDirection={paper?.grainDirection}
+                />
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div className="geometry-metric">
+                    <div className="geometry-metric-label">Lectura del montaje</div>
+                    <div style={{ marginTop: '0.35rem', fontSize: '0.9rem', fontWeight: 600 }}>
+                      {LAYOUT_LABELS[geometryResult.layoutMode] || geometryResult.layoutMode}
+                    </div>
+                    <div style={{ marginTop: '0.35rem', color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                      Azul: orientacion original. Naranja: pieza girada. La linea interior punteada representa el corte final sin sangrado.
+                    </div>
                   </div>
-                ))}
+
+                  <div className="geometry-metric">
+                    <div className="geometry-metric-label">Desglose de area</div>
+                    <div style={{ marginTop: '0.4rem', display: 'grid', gap: '0.3rem', fontSize: '0.8rem' }}>
+                      <span>Impresion: {(geometryResult.wasteBreakdown.printOccupiedAreaCm2 / 10000).toFixed(3)} m2</span>
+                      <span>Sobrante geometrico: {(geometryResult.wasteBreakdown.geometricWasteAreaCm2 / 10000).toFixed(3)} m2</span>
+                      {geometryResult.wasteBreakdown.nonPrintableAreaCm2 > 0 && (
+                        <span>Zona no imprimible: {(geometryResult.wasteBreakdown.nonPrintableAreaCm2 / 10000).toFixed(3)} m2</span>
+                      )}
+                      {geometryResult.materialConsumption.estimatedWeightKg !== undefined && (
+                        <span>Peso de compra estimado: {geometryResult.materialConsumption.estimatedWeightKg.toFixed(2)} kg</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          ) : null}
 
-          {wizard.useAdvancedGeometry ? renderAdvancedGeometryMap() : renderLegacyPaperGraph()}
+              {geometryResult.alternatives.length > 1 && (
+                <div style={{ marginTop: '1rem' }}>
+                  <h4 style={{ marginBottom: '0.6rem', fontSize: '0.95rem' }}>Alternativas comparadas</h4>
+                  <div style={{ display: 'grid', gap: '0.5rem' }}>
+                    {geometryResult.alternatives.map((alternative, index) => (
+                      <div
+                        key={alternative.id}
+                        className={`geometry-alternative ${index === 0 ? 'recommended' : ''}`}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                          <strong>{index === 0 ? 'Recomendada: ' : ''}{alternative.label}</strong>
+                          <span>{alternative.piecesPerSheetOrRun.toLocaleString('es-CO', { maximumFractionDigits: 2 })} pzs</span>
+                        </div>
+                        <div style={{ marginTop: '0.2rem', color: 'var(--text-secondary)', fontSize: '0.76rem' }}>
+                          Aprovechamiento {alternative.utilizationPct.toFixed(1)}% | Costo ${Math.round(alternative.materialCost).toLocaleString('es-CO')} | {alternative.cutCount} cortes
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {wizard.overrideCabidas !== null && (
-            <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#fef3c7', color: '#92400e', borderRadius: '4px', fontSize: '0.85rem' }}>
-              <strong>Modo Manual Activo:</strong> Se fuerza cabidas para recalcular consumo y costo del material.
-            </div>
+              <details style={{ marginTop: '1rem' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Ver secuencia tecnica de cortes</summary>
+                <div style={{ marginTop: '0.6rem', display: 'grid', gap: '0.35rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  {geometryResult.cutPlan.length > 0 ? geometryResult.cutPlan.map((step, index) => (
+                    <div key={`${step.description}-${index}`}>
+                      Etapa {step.stage}: {step.description}. Paso {step.sizeCm.toLocaleString('es-CO', { maximumFractionDigits: 3 })} cm, {step.count} cortes.
+                    </div>
+                  )) : (
+                    <div>Sin secuencia verificada por ajuste manual.</div>
+                  )}
+                </div>
+              </details>
+            </>
           )}
-        </div>
+
+          <p style={{ marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+            Calculo orientativo. Antes de producir valida fibra, formato real del proveedor, tolerancias de maquina y disponibilidad del material.
+          </p>
+        </section>
       )}
     </div>
   );

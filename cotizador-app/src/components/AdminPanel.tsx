@@ -185,6 +185,8 @@ export const AdminPanel: React.FC = () => {
           pricingMode: (formData.pricingMode as PaperType['pricingMode']) || undefined,
           costPerLinearMeter: formData.costPerLinearMeter ? toNumber(formData.costPerLinearMeter) : undefined,
           costPerSquareMeter: formData.costPerSquareMeter ? toNumber(formData.costPerSquareMeter) : undefined,
+          grainDirection: (formData.grainDirection as PaperType['grainDirection']) || 'unknown',
+          purchaseIncrement: formData.purchaseIncrement ? toNumber(formData.purchaseIncrement) : undefined,
           weightGrams: formData.weightGrams ? toNumber(formData.weightGrams) : undefined,
           provider: formData.provider ? toText(formData.provider) : undefined,
         };
@@ -359,6 +361,22 @@ export const AdminPanel: React.FC = () => {
           <div className="input-group">
             <label className="input-label">Costo / m2</label>
             <input type="number" className="input-field" value={formData.costPerSquareMeter || ''} onChange={(event) => setFormData({ ...formData, costPerSquareMeter: Number(event.target.value) })} />
+          </div>
+          <div className="input-group">
+            <label className="input-label">Sentido de fibra</label>
+            <select className="input-field" value={formData.grainDirection || 'unknown'} onChange={(event) => setFormData({ ...formData, grainDirection: event.target.value as PaperType['grainDirection'] })}>
+              <option value="unknown">Sin definir</option>
+              <option value="long">Fibra al largo</option>
+              <option value="short">Fibra al ancho</option>
+            </select>
+          </div>
+          <div className="input-group">
+            <label className="input-label">Gramaje (g/m2)</label>
+            <input type="number" className="input-field" value={formData.weightGrams || ''} onChange={(event) => setFormData({ ...formData, weightGrams: Number(event.target.value) })} />
+          </div>
+          <div className="input-group">
+            <label className="input-label">Incremento compra rollo (ML)</label>
+            <input type="number" step="0.01" className="input-field" value={formData.purchaseIncrement || ''} onChange={(event) => setFormData({ ...formData, purchaseIncrement: Number(event.target.value) })} />
           </div>
         </div>
       );

@@ -5,6 +5,8 @@ export type QuoteStatus = 'Aprobada' | 'En Seguimiento';
 export type UserRole = 'admin' | 'seller';
 export type SubstrateKind = 'sheet' | 'roll';
 export type RollPricingMode = 'linear_meter' | 'square_meter';
+export type GrainDirection = 'long' | 'short' | 'unknown';
+export type GeometryOptimizationMode = 'best_fit' | 'preserve_grain' | 'fixed_normal' | 'fixed_rotated';
 
 export interface ClientType {
   id: string;
@@ -28,6 +30,8 @@ export interface PaperType {
   pricingMode?: RollPricingMode;
   costPerLinearMeter?: number;
   costPerSquareMeter?: number;
+  grainDirection?: GrainDirection;
+  purchaseIncrement?: number;
 }
 
 export interface MachineType {
@@ -99,6 +103,34 @@ export interface GeometryMaterialConsumption {
   requiredSheets?: number;
   requiredLinearMeters?: number;
   consumedAreaM2?: number;
+  productionQuantity?: number;
+  estimatedWeightKg?: number;
+}
+
+export interface GeometryWasteBreakdown {
+  finishedPieceAreaCm2: number;
+  printOccupiedAreaCm2: number;
+  geometricWasteAreaCm2: number;
+  nonPrintableAreaCm2: number;
+  productionWasteAreaCm2: number;
+}
+
+export interface GeometryPlacement {
+  xCm: number;
+  yCm: number;
+  widthCm: number;
+  heightCm: number;
+  orientation: 'normal' | 'rotated';
+}
+
+export interface GeometryAlternativeSnapshot {
+  id: string;
+  label: string;
+  layoutMode: string;
+  piecesPerSheetOrRun: number;
+  utilizationPct: number;
+  materialCost: number;
+  cutCount: number;
 }
 
 export interface QuoteItemGeometrySnapshot {
@@ -113,10 +145,20 @@ export interface QuoteItemGeometrySnapshot {
   gripperCm: number;
   wastePct: number;
   allowRotation: boolean;
+  optimizationMode?: GeometryOptimizationMode;
+  grainDirection?: GrainDirection;
+  manualOverride?: boolean;
+  geometryVerified?: boolean;
   piecesPerSheetOrRun: number;
   utilizationPct: number;
   usedAreaCm2: number;
   wasteAreaCm2: number;
+  containerWidthCm?: number;
+  containerHeightCm?: number;
+  wasteBreakdown?: GeometryWasteBreakdown;
+  placements?: GeometryPlacement[];
+  alternatives?: GeometryAlternativeSnapshot[];
+  warnings?: string[];
   materialConsumption: GeometryMaterialConsumption;
   materialCost: number;
   cutPlan: GeometryCutPlanStep[];

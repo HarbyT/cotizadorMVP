@@ -28,11 +28,11 @@ const initialCompanyConfig: CompanyConfig = {
 };
 
 const initialPapers: PaperType[] = [
-  { id: 'P-01', name: 'Propalcote 150g', substrateKind: 'sheet', formatWidth: 100, formatHeight: 70, costPerSheet: 400 },
-  { id: 'P-02', name: 'Propalcote 300g', substrateKind: 'sheet', formatWidth: 100, formatHeight: 70, costPerSheet: 800 },
-  { id: 'P-03', name: 'Bond 75g', substrateKind: 'sheet', formatWidth: 70, formatHeight: 50, costPerSheet: 120 },
-  { id: 'P-04', name: 'Adhesivo', substrateKind: 'sheet', formatWidth: 100, formatHeight: 70, costPerSheet: 2500 },
-  { id: 'P-05', name: 'Maule C18', substrateKind: 'sheet', formatWidth: 100, formatHeight: 70, costPerSheet: 1800 },
+  { id: 'P-01', name: 'Propalcote 150g', substrateKind: 'sheet', formatWidth: 100, formatHeight: 70, costPerSheet: 400, weightGrams: 150, grainDirection: 'long' },
+  { id: 'P-02', name: 'Propalcote 300g', substrateKind: 'sheet', formatWidth: 100, formatHeight: 70, costPerSheet: 800, weightGrams: 300, grainDirection: 'long' },
+  { id: 'P-03', name: 'Bond 75g', substrateKind: 'sheet', formatWidth: 70, formatHeight: 50, costPerSheet: 120, weightGrams: 75, grainDirection: 'long' },
+  { id: 'P-04', name: 'Adhesivo', substrateKind: 'sheet', formatWidth: 100, formatHeight: 70, costPerSheet: 2500, grainDirection: 'unknown' },
+  { id: 'P-05', name: 'Maule C18', substrateKind: 'sheet', formatWidth: 100, formatHeight: 70, costPerSheet: 1800, grainDirection: 'long' },
   {
     id: 'P-06',
     name: 'Vinilo Adhesivo Blanco',
@@ -44,6 +44,8 @@ const initialPapers: PaperType[] = [
     pricingMode: 'linear_meter',
     costPerLinearMeter: 17500,
     costPerSquareMeter: 12000,
+    grainDirection: 'unknown',
+    purchaseIncrement: 0.1,
   },
 ];
 
